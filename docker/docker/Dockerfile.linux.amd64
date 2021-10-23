@@ -1,0 +1,11 @@
+FROM docker:20.10.9-dind
+
+ENV DOCKER_HOST=unix:///var/run/docker.sock
+
+RUN mkdir -p ~/.docker/cli-plugins
+RUN wget -O ~/.docker/cli-plugins/docker-buildx https://github.com/docker/buildx/releases/download/v0.6.3/buildx-v0.6.3.linux-amd64
+RUN chmod +x ~/.docker/cli-plugins/docker-buildx
+
+
+ADD release/linux/amd64/drone-docker-buildx /bin/
+ENTRYPOINT ["/usr/local/bin/dockerd-entrypoint.sh", "/bin/drone-docker-buildx"]
