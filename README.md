@@ -15,7 +15,7 @@ steps:
         - linux/amd64
         - linux/arm64
       tags:
-        - hub.private.com/sellsite/test:latest
+        - hub.private.com/username/test:latest
     environment:
       PLUGIN_EXPERIMENTAL: true
       DOCKER_PASSWORD:
