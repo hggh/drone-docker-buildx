@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"regexp"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+	"github.com/google/uuid"
 )
 
 type (
@@ -131,17 +133,25 @@ func (p Plugin) Exec() error {
 		p.Build.Squash = false
 	}
 
+	uuid := uuid.New()
+	re := regexp.MustCompile(`\d`)
+	buildx_builder_name := re.ReplaceAllString(uuid.String(), "A")
+
 	// add proxy build args
 	addProxyBuildArgs(&p.Build)
 
 	var cmds []*exec.Cmd
+	var cmds_cleanup []*exec.Cmd
+
 	cmds = append(cmds, commandVersion()) // docker version
 	cmds = append(cmds, commandInfo())    // docker info
-	cmds = append(cmds, exec.Command(dockerExe, "buildx", "install"))
+	cmds = append(cmds, exec.Command(dockerExe, "buildx", "create", "--name", buildx_builder_name))
 
-	cmds = append(cmds, commandBuild(p.Build)) // docker build
+	cmds = append(cmds, commandBuild(p.Build, buildx_builder_name)) // docker buildx build
 
-	// execute all commands in batch mode.
+	cmds_cleanup = append(cmds_cleanup, exec.Command(dockerExe, "buildx", "stop", "--builder", buildx_builder_name))
+	cmds_cleanup = append(cmds_cleanup, exec.Command(dockerExe, "buildx", "rm", "--builder", buildx_builder_name))
+
 	for _, cmd := range cmds {
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -155,11 +165,23 @@ func (p Plugin) Exec() error {
 		} else if err != nil && isCommandRmi(cmd.Args) {
 			fmt.Printf("Could not remove image %s. Ignoring...\n", cmd.Args[2])
 		} else if err != nil {
+			cleanupBuilder(cmds_cleanup)
 			return err
 		}
 	}
-
+	cleanupBuilder(cmds_cleanup)
 	return nil
+}
+
+// helper to cleanup the buildx builder containers
+func cleanupBuilder(cmds_cleanup []*exec.Cmd) {
+	for _, cmd := range cmds_cleanup {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		trace(cmd)
+
+		cmd.Run()
+	}
 }
 
 // helper function to create the docker login command.
@@ -205,11 +227,12 @@ func commandInfo() *exec.Cmd {
 }
 
 // helper function to create the docker build command.
-func commandBuild(build Build) *exec.Cmd {
+func commandBuild(build Build, buildx_builder_name string) *exec.Cmd {
 	args := []string{
 		"buildx",
 		"build",
-		//		"--rm=true",
+		"--builder", buildx_builder_name,
+		"--rm=true",
 		"-f", build.Dockerfile,
 	}
 
